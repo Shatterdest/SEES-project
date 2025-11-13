@@ -35,7 +35,7 @@ HEAD_NUM = 32
 HEAD_DIM = 128
 HIDDEN_DIM = HEAD_NUM * HEAD_DIM
 
-batch_size = 4 # 5 is the highest it can go without running out of CUDA memory
+batch_size = 2 # 5 is the highest it can go without running out of CUDA memory
 
 @dataclass
 class ImagePrompt:
@@ -56,36 +56,46 @@ def normalize(vector):
     vector2 = [x/sum(vector1) for x in vector1]
     return vector2
 
-def transfer_output(model_output, batch_size=5):
+def transfer_output(outputs, batch_size):
+    hs = outputs.hidden_states    # list length num_layers+1 often
+    att = getattr(outputs, "attentions", None)
+
     all_pos_layer_input = []
     all_pos_layer_output = []
     all_last_attn_subvalues = []
 
-    for layer_i in range(LAYER_NUM):
-        batch_inputs = []
-        batch_outputs = []
-        batch_subvalues = []
-        
-        for b in range(batch_size):
-            layer_data = model_output[layer_i]
-            cur_layer_input = layer_data[0][b] if layer_data[0].dim() > 1 else layer_data[0]
-            cur_layer_output = layer_data[4][b] if layer_data[4].dim() > 1 else layer_data[4]
-            cur_last_attn_subvalues = layer_data[5][b] if layer_data[5].dim() > 1 else layer_data[5]
-            
-            batch_inputs.append(cur_layer_input.tolist())
-            batch_outputs.append(cur_layer_output.tolist())
-            batch_subvalues.append(cur_last_attn_subvalues.tolist())
-        
+    # choose how many layers to iterate (example: LAYER_NUM)
+    for layer_i in range(min(LAYER_NUM, len(hs))):
+        # hidden state at this layer
+        layer_tensor = hs[layer_i]          # (batch, seq_len, hidden)
+        # maybe use hs[layer_i+1] as "output" after the layer
+        next_layer_tensor = hs[layer_i+1] if (layer_i+1) < len(hs) else layer_tensor
+
+        # attentions may be shorter, check availability
+        att_tensor = att[layer_i] if (att is not None and layer_i < len(att)) else None
+
+        # store per-batch tensors (keep as torch tensors)
+        batch_inputs = [layer_tensor[b].detach().cpu() for b in range(batch_size)]
+        batch_outputs = [next_layer_tensor[b].detach().cpu() for b in range(batch_size)]
+        if att_tensor is not None:
+            batch_subvalues = [att_tensor[b].detach().cpu() for b in range(batch_size)]
+        else:
+            # placeholder: zeros with expected shape (num_heads, seq_len, seq_len)
+            # or use None and handle later
+            batch_subvalues = [torch.zeros(HEAD_NUM, layer_tensor.shape[1], layer_tensor.shape[1]) for _ in range(batch_size)]
+
         all_pos_layer_input.append(batch_inputs)
         all_pos_layer_output.append(batch_outputs)
         all_last_attn_subvalues.append(batch_subvalues)
 
     return all_pos_layer_input, all_pos_layer_output, all_last_attn_subvalues
 
+
+
 def get_bsvalues(vector, model, final_var):
     vector = vector * torch.rsqrt(final_var + 1e-6)
-    vector_rmsn = vector * model.language_model.model.norm.weight.data
-    vector_bsvalues = model.language_model.lm_head(vector_rmsn).data
+    vector_rmsn = vector * model.language_model.norm.weight.data
+    vector_bsvalues = model.lm_head(vector_rmsn).data
     return vector_bsvalues
 
 def get_prob(vector):
@@ -147,12 +157,16 @@ class LlavaMechanism:
         torch.set_default_device('cuda')
         
         # Load model
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+        )
         self.model = LlavaForConditionalGeneration.from_pretrained(
             model_id, 
             low_cpu_mem_usage=True, 
-            revision='a272c74'
+            revision='a272c74',
+            quantization_config=quantization_config
         ).to(device)
-        
+        self.model.set_attn_implementation("eager")
         print(f"Model loaded on {self.model.device}")
         self.model.eval()
         
@@ -174,11 +188,17 @@ class LlavaMechanism:
         inputs = self.processor(text=full_prompts, images=images, return_tensors="pt", padding=True).to(self.model.device)
 
         with torch.inference_mode():
-            outputs = self.model(**inputs)
-        
+            outputs = self.model(
+                **inputs,
+                output_attentions=True,
+                output_hidden_states=True,
+                return_dict=True
+            )
+
+                
         print(f'Finished inference time {time.time() - t}')
 
-        transfer_outputs = transfer_output(outputs[2], batch_size)
+        transfer_outputs = transfer_output(outputs, batch_size)
         
         for i in range(batch_size):
             all_pos_layer_input_i = [layer[i] for layer in transfer_outputs[0]]
@@ -190,7 +210,22 @@ class LlavaMechanism:
             outputs_probs_sort = torch.argsort(outputs_probs, descending=True)
             print([self.processor.decode(x) for x in outputs_probs_sort[:10]])
             
-            final_var = torch.tensor(all_pos_layer_output_i[-1][-1]).pow(2).mean(-1, keepdim=True)
+            # all_pos_layer_output_i[-1] should be a list of batch tensors for the last layer
+            last_layer_batch = all_pos_layer_output_i[-1]  # list of tensors length=batch_size
+            last_elem = last_layer_batch[-1]               # tensor (hopefully vector or tensor)
+            last_elem_tensor = torch.as_tensor(last_elem)  # safe conversion if it was python list; no-op if already tensor
+
+            # ensure last_elem_tensor has at least 1 dimension before indexing last token
+            if last_elem_tensor.dim() == 0:
+                vec = last_elem_tensor.unsqueeze(0)  # shape (1,)
+            elif last_elem_tensor.dim() == 1:
+                vec = last_elem_tensor
+            else:
+                # assume shape (..., hidden) or (seq_len, hidden) or (batch?, seq_len, hidden)
+                vec = last_elem_tensor.view(-1, last_elem_tensor.shape[-1])[-1]  # pick last vector
+
+            final_var = vec.pow(2).mean(-1, keepdim=True)
+
             
             image_i = images[i]
             image_convert = convert_to_rgb(image_i)
@@ -204,23 +239,64 @@ class LlavaMechanism:
             predict_index = outputs_probs_sort[0].item()
             print(predict_index, self.processor.decode(predict_index))
 
-            all_head_increase = []
-            for test_layer in range(LAYER_NUM):
-                cur_layer_input = torch.tensor(all_pos_layer_input_i[test_layer])
-                cur_v_heads = torch.tensor(all_last_attn_subvalues_i[test_layer])
-                cur_attn_o_split = self.model.language_model.model.layers[test_layer].self_attn.o_proj.weight.data.T.view(HEAD_NUM, HEAD_DIM, -1)
+        # Replace the "START REPLACEMENT BLOCK" section (around lines 241-280) with this:
+
+        all_head_increase = []
+        for test_layer in range(min(LAYER_NUM, len(all_pos_layer_input_i))):
+            # Get the layer input for this sample (already extracted in transfer_output)
+            layer_input = all_pos_layer_input_i[test_layer]  # (seq, hidden)
+            layer_output = all_pos_layer_output_i[test_layer]  # (seq, hidden)
+            att_layer = all_last_attn_subvalues_i[test_layer]  # (heads, seq, seq)
+            
+            # Move to model device and dtype
+            layer_input = layer_input.to(self.model.dtype).to(self.model.device)
+            layer_output = layer_output.to(self.model.dtype).to(self.model.device)
+            att_layer = att_layer.to(self.model.dtype).to(self.model.device)
+            
+            seq_len = layer_input.shape[0]
+
+            # 1) Compute V = v_proj(layer_input) -> (seq, hidden)
+            v_proj_module = self.model.language_model.layers[test_layer].self_attn.v_proj
+            V = v_proj_module(layer_input)  # (seq, hidden)
+
+            # 2) Reshape V into heads: (seq, heads, head_dim) -> permute to (heads, seq, head_dim)
+            V_heads = V.view(seq_len, HEAD_NUM, HEAD_DIM).permute(1, 0, 2)  # (heads, seq, head_dim)
+
+            # 3) Per-head attention output: bmm(attention, V_heads) -> (heads, seq, head_dim)
+            attn_out_per_head_raw = torch.bmm(att_layer, V_heads)  # (heads, seq, head_dim)
+
+            # 4) Pass through o_proj to map back to hidden space *per head*
+            o_proj_module = self.model.language_model.layers[test_layer].self_attn.o_proj
+            # o_proj weight shape is (hidden_out, hidden_in) = (4096, 4096)
+            # We need to split the input dimension (4096) into heads: (hidden_out, HEAD_NUM, HEAD_DIM)
+            o_proj_weight = o_proj_module.weight.data.to(self.model.dtype).to(self.model.device)  # (4096, 4096)
+            hidden_size = o_proj_weight.shape[0]
+            
+            # Reshape to separate heads in the input: (hidden_out, HEAD_NUM, HEAD_DIM)
+            o_proj_weight_split = o_proj_weight.view(hidden_size, HEAD_NUM, HEAD_DIM)
+            # Permute to (HEAD_NUM, HEAD_DIM, hidden_out) for bmm
+            o_proj_weight_split = o_proj_weight_split.permute(1, 2, 0)  # (HEAD_NUM, HEAD_DIM, hidden_out)
+
+            # 5) Compute the contribution of each head to the hidden state output
+            #    (heads, seq, head_dim) @ (heads, head_dim, hidden_out) -> (heads, seq, hidden_out)
+            attn_subvalues_per_head = torch.bmm(attn_out_per_head_raw, o_proj_weight_split)
+            
+            # 6) Get the input vector for the last token and the original log-prob
+            cur_layer_input_last = layer_input[-1]  # (hidden,)
+            origin_prob = torch.log(get_prob(get_bsvalues(cur_layer_input_last, self.model, final_var))[predict_index])
+
+            # 7) Loop through all heads (HEAD_NUM = 32)
+            for head_i in range(HEAD_NUM):
+                # Get the contribution of only this head for the last token
+                head_contribution_last_token = attn_subvalues_per_head[head_i, -1, :]  # (hidden,)
                 
-                cur_attn_subvalues_headrecompute = torch.bmm(cur_v_heads, cur_attn_o_split).permute(1, 0, 2)
-                cur_attn_subvalues_head_sum = torch.sum(cur_attn_subvalues_headrecompute, 0)
-                cur_layer_input_last = cur_layer_input[-1]
-                
-                origin_prob = torch.log(get_prob(get_bsvalues(cur_layer_input_last, self.model, final_var))[predict_index])
-                cur_attn_subvalues_head_plus = cur_attn_subvalues_head_sum + cur_layer_input_last
-                cur_attn_plus_probs = torch.log(get_prob(get_bsvalues(
-                        cur_attn_subvalues_head_plus, self.model, final_var))[:, predict_index])
-                cur_attn_plus_probs_increase = cur_attn_plus_probs - origin_prob
-                for j in range(len(cur_attn_plus_probs_increase)):
-                    all_head_increase.append([f"{test_layer}_{j}", round(cur_attn_plus_probs_increase[j].item(), 4)])
+                # Compute contribution if we add only this head's output
+                added = head_contribution_last_token + cur_layer_input_last  # (hidden,)
+                added_probs = torch.log(get_prob(get_bsvalues(added, self.model, final_var))[predict_index])
+                increase = added_probs - origin_prob
+
+                # Store the result as "Layer_Head"
+                all_head_increase.append([f"{test_layer}_{head_i}", float(increase.item())])
 
             print(f'Finished head-level increase time {time.time() - t}')
             
@@ -230,7 +306,7 @@ class LlavaMechanism:
             
             cur_layer_input = outputs[2][test_layer][0][i]
             cur_v_heads = outputs[2][test_layer][5][i]
-            cur_attn_o_split = self.model.language_model.model.layers[test_layer].self_attn.o_proj.weight.data.T.view(HEAD_NUM, HEAD_DIM, -1)
+            cur_attn_o_split = self.model.language_model.layers[test_layer].self_attn.o_proj.weight.data.T.view(HEAD_NUM, HEAD_DIM, -1)
             cur_attn_subvalues_headrecompute = torch.bmm(cur_v_heads, cur_attn_o_split).permute(1, 0, 2)
             cur_attn_subvalues_headrecompute_curhead = cur_attn_subvalues_headrecompute[:, head_index, :]
             

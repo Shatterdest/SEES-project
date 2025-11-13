@@ -1,0 +1,100 @@
+question_type,question,prefix,prompt,ground_truth,image_url
+Object Counting,How many cats are in the image?,Count:,Count exactly how many cats are present. How many cats are in the image? Count:,2,https://images.cocodataset.org/val2017/000000039769.jpg
+Object Counting,How many people are visible?,Count:,Count the total number of people. How many people are visible? Count:,4,https://images.cocodataset.org/val2017/000000334555.jpg
+Object Counting,How many elephants are present?,Count:,Count the elephants in this image. How many elephants are present? Count:,3,https://images.cocodataset.org/val2017/000000025393.jpg
+Object Identification,What animal is shown?,Animal:,Identify the animal species in one word. What animal is shown? Animal:,elephant,https://images.cocodataset.org/val2017/000000025393.jpg
+Object Identification,What vehicle is in the image?,Vehicle:,Name the type of vehicle shown. What vehicle is in the image? Vehicle:,bus,https://images.cocodataset.org/val2017/000000109798.jpg
+Object Identification,What food item is visible?,Food:,Identify the food in one word. What food item is visible? Food:,pizza,https://images.cocodataset.org/val2017/000000165547.jpg
+Object Identification,What is the main furniture item?,Furniture:,Identify the primary furniture piece. What is the main furniture item? Furniture:,bed,https://images.cocodataset.org/val2017/000000356347.jpg
+Object Detection,What is on the desk?,Object:,Identify the main object on the desk. What is on the desk? Object:,laptop,https://images.cocodataset.org/val2017/000000231339.jpg
+Object Detection,What electronic device is visible?,Device:,Name the electronic device shown. What electronic device is visible? Device:,laptop,https://images.cocodataset.org/val2017/000000459467.jpg
+Fine-grained Recognition,What type of dog is this?,Breed:,Identify the dog breed. What type of dog is this? Breed:,golden retriever,https://images.cocodataset.org/val2017/000000574769.jpg
+Object Counting,How many umbrellas are visible?,Count:,Count all umbrellas in the scene. How many umbrellas are visible? Count:,1,https://images.cocodataset.org/val2017/000000285894.jpg
+Object Identification,What appliance is in the kitchen?,Appliance:,Name the kitchen appliance shown. What appliance is in the kitchen? Appliance:,refrigerator,https://images.cocodataset.org/val2017/000000322844.jpg
+Object Identification,What sport equipment is shown?,Equipment:,Identify the sports equipment. What sport equipment is shown? Equipment:,tennis racket,https://images.cocodataset.org/val2017/000000018737.jpg
+Object Counting,How many vehicles are parked?,Count:,Count the number of vehicles. How many vehicles are parked? Count:,2,https://images.cocodataset.org/val2017/000000109798.jpg
+Object Identification,What is the person riding?,Transport:,Identify the mode of transportation. What is the person riding? Transport:,surfboard,https://images.cocodataset.org/val2017/000000361268.jpg
+Color Recognition,What color is the umbrella?,Color:,State the umbrella's color in one word. What color is the umbrella? Color:,red,https://images.cocodataset.org/val2017/000000285894.jpg
+Color Recognition,What color is the bus?,Color:,Identify the bus color. What color is the bus? Color:,red,https://images.cocodataset.org/val2017/000000109798.jpg
+Attribute Recognition,Is the cat sitting or standing?,Posture:,Describe the cat's posture in one word. Is the cat sitting or standing? Posture:,sitting,https://images.cocodataset.org/val2017/000000039769.jpg
+Object State,Is the pizza whole or sliced?,State:,Describe the pizza's state. Is the pizza whole or sliced? State:,sliced,https://images.cocodataset.org/val2017/000000165547.jpg
+Attribute Recognition,Is the laptop open or closed?,State:,Describe the laptop's state. Is the laptop open or closed? State:,open,https://images.cocodataset.org/val2017/000000231339.jpg
+Material Recognition,What material is the table made of?,Material:,Identify the table's material. What material is the table made of? Material:,wood,https://images.cocodataset.org/val2017/000000087038.jpg
+Attribute Recognition,Is the dog standing or lying down?,Posture:,Describe the dog's posture. Is the dog standing or lying down? Posture:,standing,https://images.cocodataset.org/val2017/000000017627.jpg
+Size Comparison,"Which is larger, the refrigerator or the microwave?",Larger:,"Compare sizes and answer. Which is larger, the refrigerator or the microwave? Larger:",refrigerator,https://images.cocodataset.org/val2017/000000322844.jpg
+Color Recognition,What color are the traffic lights?,Color:,Identify the traffic light color. What color are the traffic lights? Color:,red,https://images.cocodataset.org/val2017/000000138819.jpg
+Attribute Recognition,Is the bed made or unmade?,State:,Describe the bed's state. Is the bed made or unmade? State:,unmade,https://images.cocodataset.org/val2017/000000356347.jpg
+Color Recognition,What color is the skateboard?,Color:,State the skateboard's color. What color is the skateboard? Color:,black,https://images.cocodataset.org/val2017/000000502136.jpg
+Attribute Recognition,Is the door open or closed?,State:,Describe the door's state. Is the door open or closed? State:,closed,https://images.cocodataset.org/val2017/000000322864.jpg
+Spatial Reasoning,Is the laptop to the left or right of the mouse?,Position:,Determine the spatial relationship. Is the laptop to the left or right of the mouse? Position:,left,https://images.cocodataset.org/val2017/000000459467.jpg
+Spatial Reasoning,Where is the clock located?,Location:,Describe the clock's position. Where is the clock located? Location:,on wall,https://images.cocodataset.org/val2017/000000481390.jpg
+Spatial Reasoning,Is the dog in front of or behind the person?,Position:,Determine spatial relationship. Is the dog in front of or behind the person? Position:,in front,https://images.cocodataset.org/val2017/000000017627.jpg
+Relational Reasoning,What is the person holding?,Holding:,Identify what the person grasps. What is the person holding? Holding:,phone,https://images.cocodataset.org/val2017/000000532855.jpg
+Relational Reasoning,What is the person wearing on their head?,Wearing:,Identify the headwear. What is the person wearing on their head? Wearing:,helmet,https://images.cocodataset.org/val2017/000000502136.jpg
+Spatial Reasoning,Where is the vase positioned?,Location:,Describe the vase's location. Where is the vase positioned? Location:,on table,https://images.cocodataset.org/val2017/000000087038.jpg
+Relational Reasoning,What is next to the laptop?,Adjacent:,Identify the adjacent object. What is next to the laptop? Adjacent:,mouse,https://images.cocodataset.org/val2017/000000459467.jpg
+Spatial Reasoning,Is the umbrella above or below the person?,Position:,Determine vertical position. Is the umbrella above or below the person? Position:,above,https://images.cocodataset.org/val2017/000000285894.jpg
+Relational Reasoning,What is on top of the refrigerator?,On top:,Identify what sits atop the refrigerator. What is on top of the refrigerator? On top:,microwave,https://images.cocodataset.org/val2017/000000322844.jpg
+Spatial Reasoning,Is the cat on the left or right side?,Side:,Determine which side the cat occupies. Is the cat on the left or right side? Side:,left,https://images.cocodataset.org/val2017/000000039769.jpg
+Relational Reasoning,What is the person sitting on?,Sitting on:,Identify the seating surface. What is the person sitting on? Sitting on:,bench,https://images.cocodataset.org/val2017/000000334555.jpg
+Spatial Reasoning,Where is the pizza placed?,Location:,Describe the pizza's location. Where is the pizza placed? Location:,on plate,https://images.cocodataset.org/val2017/000000165547.jpg
+Relational Reasoning,What is beside the bed?,Beside:,Identify what's next to the bed. What is beside the bed? Beside:,nightstand,https://images.cocodataset.org/val2017/000000356347.jpg
+Spatial Reasoning,Is the sign above or below the traffic light?,Position:,Determine vertical relationship. Is the sign above or below the traffic light? Position:,below,https://images.cocodataset.org/val2017/000000138819.jpg
+Relational Reasoning,What is the elephant standing on?,Standing on:,Identify the surface beneath the elephant. What is the elephant standing on? Standing on:,ground,https://images.cocodataset.org/val2017/000000025393.jpg
+Activity Recognition,What is the person doing?,Activity:,Describe the primary activity. What is the person doing? Activity:,playing tennis,https://images.cocodataset.org/val2017/000000018737.jpg
+Action Recognition,What action is being performed?,Action:,Identify the main action. What action is being performed? Action:,surfing,https://images.cocodataset.org/val2017/000000361268.jpg
+Activity Recognition,What are the people doing?,Activity:,Describe the group activity. What are the people doing? Activity:,sitting,https://images.cocodataset.org/val2017/000000334555.jpg
+Action Recognition,What is the cat doing?,Action:,Describe the cat's action. What is the cat doing? Action:,sleeping,https://images.cocodataset.org/val2017/000000039769.jpg
+Activity Recognition,What activity is shown?,Activity:,Identify the activity depicted. What activity is shown? Activity:,skiing,https://images.cocodataset.org/val2017/000000502136.jpg
+Action Recognition,What is the person doing with the phone?,Action:,Describe the phone-related action. What is the person doing with the phone? Action:,holding,https://images.cocodataset.org/val2017/000000532855.jpg
+Activity Recognition,What sport is being played?,Sport:,Identify the sport activity. What sport is being played? Sport:,baseball,https://images.cocodataset.org/val2017/000000308430.jpg
+Action Recognition,What is the dog doing?,Action:,Describe the dog's action. What is the dog doing? Action:,standing,https://images.cocodataset.org/val2017/000000017627.jpg
+Activity Recognition,What are the elephants doing?,Activity:,Describe the elephants' activity. What are the elephants doing? Activity:,walking,https://images.cocodataset.org/val2017/000000025393.jpg
+Action Recognition,What is happening in this scene?,Action:,Describe the main action. What is happening in this scene? Action:,eating,https://images.cocodataset.org/val2017/000000165547.jpg
+Activity Recognition,What activity requires this equipment?,Activity:,Identify the activity for this equipment. What activity requires this equipment? Activity:,skiing,https://images.cocodataset.org/val2017/000000502136.jpg
+Interaction Recognition,How are the people interacting?,Interaction:,Describe the interaction between people. How are the people interacting? Interaction:,sitting together,https://images.cocodataset.org/val2017/000000334555.jpg
+Scene Understanding,Where is this scene taking place?,Location:,Identify the scene location. Where is this scene taking place? Location:,kitchen,https://images.cocodataset.org/val2017/000000322864.jpg
+Environment Type,Is this indoors or outdoors?,Environment:,Classify the environment. Is this indoors or outdoors? Environment:,outdoors,https://images.cocodataset.org/val2017/000000018737.jpg
+Scene Understanding,What type of room is this?,Room:,Identify the room type. What type of room is this? Room:,bedroom,https://images.cocodataset.org/val2017/000000356347.jpg
+Contextual Understanding,What is the purpose of this space?,Purpose:,Describe the space's function. What is the purpose of this space? Purpose:,cooking,https://images.cocodataset.org/val2017/000000322864.jpg
+Scene Understanding,What type of location is shown?,Location type:,Classify the location. What type of location is shown? Location type:,park,https://images.cocodataset.org/val2017/000000334555.jpg
+Environment Type,Is this a natural or urban environment?,Environment:,Classify the environment type. Is this a natural or urban environment? Environment:,urban,https://images.cocodataset.org/val2017/000000138819.jpg
+Scene Understanding,What setting is this?,Setting:,Identify the setting. What setting is this? Setting:,beach,https://images.cocodataset.org/val2017/000000361268.jpg
+Contextual Understanding,What type of establishment is this?,Establishment:,Identify the establishment type. What type of establishment is this? Establishment:,restaurant,https://images.cocodataset.org/val2017/000000165547.jpg
+Scene Understanding,What kind of area is depicted?,Area:,Describe the area type. What kind of area is depicted? Area:,street,https://images.cocodataset.org/val2017/000000109798.jpg
+Environment Type,Is this a public or private space?,Space type:,Classify the space. Is this a public or private space? Space type:,public,https://images.cocodataset.org/val2017/000000334555.jpg
+Scene Understanding,What venue is this?,Venue:,Identify the venue type. What venue is this? Venue:,sports field,https://images.cocodataset.org/val2017/000000308430.jpg
+Contextual Understanding,What is the setting of this image?,Setting:,Describe the image setting. What is the setting of this image? Setting:,living room,https://images.cocodataset.org/val2017/000000087038.jpg
+Temporal Reasoning,What time of day is it?,Time:,Determine the time of day. What time of day is it? Time:,daytime,https://images.cocodataset.org/val2017/000000458109.jpg
+Weather Recognition,What is the weather like?,Weather:,Describe the weather condition. What is the weather like? Weather:,sunny,https://images.cocodataset.org/val2017/000000458109.jpg
+Temporal Reasoning,Is it day or night?,Time:,Determine day or night. Is it day or night? Time:,day,https://images.cocodataset.org/val2017/000000018737.jpg
+Weather Recognition,Is it raining?,Weather:,Determine if it's raining. Is it raining? Weather:,no,https://images.cocodataset.org/val2017/000000285894.jpg
+Temporal Reasoning,What season does this appear to be?,Season:,Identify the season. What season does this appear to be? Season:,summer,https://images.cocodataset.org/val2017/000000361268.jpg
+Environmental Condition,Is it bright or dark?,Lighting:,Describe the lighting. Is it bright or dark? Lighting:,bright,https://images.cocodataset.org/val2017/000000458109.jpg
+Temporal Reasoning,What part of the day is shown?,Time period:,Identify the time period. What part of the day is shown? Time period:,afternoon,https://images.cocodataset.org/val2017/000000334555.jpg
+Weather Recognition,Are there clouds in the sky?,Sky:,Describe the sky condition. Are there clouds in the sky? Sky:,yes,https://images.cocodataset.org/val2017/000000458109.jpg
+Environmental Condition,Is there natural light?,Light source:,Identify the light source. Is there natural light? Light source:,yes,https://images.cocodataset.org/val2017/000000018737.jpg
+Temporal Reasoning,Does this look like morning or evening?,Time:,Determine morning or evening. Does this look like morning or evening? Time:,morning,https://images.cocodataset.org/val2017/000000125211.jpg
+Yes/No,Is there a dog in the image?,Answer:,Answer yes or no only. Is there a dog in the image? Answer:,yes,https://images.cocodataset.org/val2017/000000017627.jpg
+Yes/No,Are the people indoors?,Answer:,Answer yes or no only. Are the people indoors? Answer:,no,https://images.cocodataset.org/val2017/000000334555.jpg
+Yes/No,Is it nighttime?,Answer:,Answer yes or no only. Is it nighttime? Answer:,no,https://images.cocodataset.org/val2017/000000458109.jpg
+Yes/No,Is there a laptop on the desk?,Answer:,Answer yes or no only. Is there a laptop on the desk? Answer:,yes,https://images.cocodataset.org/val2017/000000231339.jpg
+Yes/No,Are there multiple cats?,Answer:,Answer yes or no only. Are there multiple cats? Answer:,yes,https://images.cocodataset.org/val2017/000000039769.jpg
+Yes/No,Is the person wearing a helmet?,Answer:,Answer yes or no only. Is the person wearing a helmet? Answer:,yes,https://images.cocodataset.org/val2017/000000502136.jpg
+Yes/No,Is there food visible?,Answer:,Answer yes or no only. Is there food visible? Answer:,yes,https://images.cocodataset.org/val2017/000000165547.jpg
+Yes/No,Is the bed unmade?,Answer:,Answer yes or no only. Is the bed unmade? Answer:,yes,https://images.cocodataset.org/val2017/000000356347.jpg
+Yes/No,Is there a traffic signal?,Answer:,Answer yes or no only. Is there a traffic signal? Answer:,yes,https://images.cocodataset.org/val2017/000000138819.jpg
+Yes/No,Are there elephants in the image?,Answer:,Answer yes or no only. Are there elephants in the image? Answer:,yes,https://images.cocodataset.org/val2017/000000025393.jpg
+Yes/No,Is someone holding an umbrella?,Answer:,Answer yes or no only. Is someone holding an umbrella? Answer:,yes,https://images.cocodataset.org/val2017/000000285894.jpg
+Yes/No,Is this a kitchen?,Answer:,Answer yes or no only. Is this a kitchen? Answer:,yes,https://images.cocodataset.org/val2017/000000322864.jpg
+Yes/No,Is there a vehicle in the image?,Answer:,Answer yes or no only. Is there a vehicle in the image? Answer:,yes,https://images.cocodataset.org/val2017/000000109798.jpg
+Yes/No,Is someone surfing?,Answer:,Answer yes or no only. Is someone surfing? Answer:,yes,https://images.cocodataset.org/val2017/000000361268.jpg
+Yes/No,Is there a refrigerator visible?,Answer:,Answer yes or no only. Is there a refrigerator visible? Answer:,yes,https://images.cocodataset.org/val2017/000000322844.jpg
+Knowledge Reasoning,What sport is being played?,Sport:,Identify the sport from context. What sport is being played? Sport:,baseball,https://images.cocodataset.org/val2017/000000308430.jpg
+Knowledge Reasoning,What activity is this equipment used for?,Activity:,Identify the activity for this equipment. What activity is this equipment used for? Activity:,skiing,https://images.cocodataset.org/val2017/000000502136.jpg
+Knowledge Reasoning,What game uses this type of equipment?,Game:,Identify the game from equipment. What game uses this type of equipment? Game:,tennis,https://images.cocodataset.org/val2017/000000018737.jpg
+Knowledge Reasoning,What is this type of vehicle called?,Vehicle type:,Name the vehicle classification. What is this type of vehicle called? Vehicle type:,bus,https://images.cocodataset.org/val2017/000000109798.jpg
+Knowledge Reasoning,What breed category is this dog?,Breed:,Classify the dog breed. What breed category is this dog? Breed:,retriever,https://images.cocodataset.org/val2017/000000574769.jpg
+Knowledge Reasoning,What water sport is shown?,Sport:,Identify the water sport. What water sport is shown? Sport:,surfing,https://images.cocodataset.org/val2017/000000361268.jpg
+Knowledge Reasoning,What type of traffic control is visible?,Traffic control:,Identify the traffic control device. What type of traffic control is visible? Traffic control:,traffic light,https://images.cocodataset.org/val2017/000000138819.jpg
+Knowledge Reasoning,What is the function of this appliance?,Function:,Describe the appliance's purpose. What is the function of this appliance? Function:,food storage,https://images.cocodataset.org/val2017/000000322844.jpg

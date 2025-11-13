@@ -137,7 +137,7 @@ def transfer_output(model_output):
 
 def get_bsvalues(vector, model, final_var):
     vector = vector * torch.rsqrt(final_var + 1e-6)
-    vector_rmsn = vector * model.language_model.model.norm.weight.data
+    vector_rmsn = vector * model.language_model.norm.weight.data
     vector_bsvalues = model.language_model.lm_head(vector_rmsn).data
     return vector_bsvalues
 
@@ -284,7 +284,7 @@ class LlavaMechanism:
         for test_layer in range(LAYER_NUM):
             cur_layer_input = torch.tensor(all_pos_layer_input[test_layer])
             cur_v_heads = torch.tensor(all_last_attn_subvalues[test_layer])
-            cur_attn_o_split = self.model.language_model.model.layers[test_layer].self_attn.o_proj.weight.data.T.view(HEAD_NUM, HEAD_DIM, -1)
+            cur_attn_o_split = self.model.language_model.layers[test_layer].self_attn.o_proj.weight.data.T.view(HEAD_NUM, HEAD_DIM, -1)
             cur_attn_subvalues_headrecompute = torch.bmm(cur_v_heads, cur_attn_o_split).permute(1, 0, 2)
             cur_attn_subvalues_head_sum = torch.sum(cur_attn_subvalues_headrecompute, 0)
             cur_layer_input_last = cur_layer_input[-1]
@@ -304,7 +304,7 @@ class LlavaMechanism:
         test_layer, head_index = int(test_layer), int(head_index)
         cur_layer_input = outputs[2][test_layer][0][0]
         cur_v_heads = outputs[2][test_layer][5][0]
-        cur_attn_o_split = self.model.language_model.model.layers[test_layer].self_attn.o_proj.weight.data.T.view(HEAD_NUM, HEAD_DIM, -1)
+        cur_attn_o_split = self.model.language_model.layers[test_layer].self_attn.o_proj.weight.data.T.view(HEAD_NUM, HEAD_DIM, -1)
         cur_attn_subvalues_headrecompute = torch.bmm(cur_v_heads, cur_attn_o_split).permute(1, 0, 2)
         cur_attn_subvalues_headrecompute_curhead = cur_attn_subvalues_headrecompute[:, head_index, :]
         cur_layer_input_last = cur_layer_input[-1]
