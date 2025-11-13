@@ -9,6 +9,7 @@ import argparse
 import os
 import random
 import urllib.parse
+import pandas as pd
 
 from PIL import Image
 from transformers.image_transforms import (
@@ -29,6 +30,7 @@ from sklearn import metrics
 from sklearn.cluster import DBSCAN
 from collections import Counter
 from dataclasses import dataclass
+import urllib3
 
 LAYER_NUM = 32
 HEAD_NUM = 32
@@ -48,7 +50,7 @@ class Entropy:
     cluster: int
     count_points: int
     average_strength: float
-
+    
 def normalize(vector):
     max_value = max(vector)
     min_value = min(vector)
@@ -432,33 +434,27 @@ def calculate_metrics(db: DBSCAN, weighted_attentions_with_locations):
     unique_clusters = set(labels) - {-1}  # Remove noise (-1)
 
     cluster_strengths = {}
-
+    
     # Count the number of points per cluster
-#    cluster_counts = Counter(labels)
-
-#    print("Points per cluster:")
-#    for label, count in cluster_counts.items():
-#        if label != -1:
-#            cluster_strengths[label] = ClusterData(count, 0)
-
-    # 
+    cluster_counts = Counter(labels)
+    
+    # Get z values (attention strengths)
     z_values = weighted_attentions_with_locations[:, 2]
 
     for cluster in unique_clusters:
         cluster_points = z_values[labels == cluster]  # Get strength values for the cluster
+        count = cluster_counts[cluster] if cluster in cluster_counts else 0
+        avg_strength = np.mean(cluster_points)
+        
+        cluster_strengths[cluster] = ClusterData(count, avg_strength)
 
-        if cluster in cluster_strengths:
-            cluster_strengths[cluster].ave_strength = np.mean(cluster_points)
-        else:
-            cluster_strengths[cluster] = ClusterData(0, np.mean(cluster_points))
-
-    # Print average strength of each cluster
+    # Print average strength and number of points per cluster
     print("Average Strength and Number of Points per Cluster:")
     for cluster, data in cluster_strengths.items():
         print(f"Cluster {cluster}: {data}")
         
     return cluster_strengths
-
+    
 def calculate_entropy(datapoints: list):
     flat_list = [item for sublist in datapoints for item in sublist]
     total_count = len(flat_list)
@@ -469,32 +465,36 @@ def calculate_entropy(datapoints: list):
     normalized_entropy = entropy / max_entropy
     return normalized_entropy
 
-def cluster_entropy(db:DBSCAN, weighted_attentions_with_locations):
+def cluster_entropy(db: DBSCAN, weighted_attentions_with_locations):
     labels = db.labels_
     unique_clusters = set(labels) - {-1}  # Remove noise (-1)
 
-    cluster_strengths = {}
+    cluster_entropies = {}
     
     z_values = weighted_attentions_with_locations[:, 2]
 
     for cluster in unique_clusters:
         cluster_points = z_values[labels == cluster]  # Get strength values for the cluster
         
-        if cluster in cluster_strengths:
-            total_count = len(cluster_points)
+        # Calculate entropy for this cluster
+        total_count = len(cluster_points)
+        if total_count > 1:  # Need at least 2 points for entropy
             counts = Counter(cluster_points)
             probabilities = [count / total_count for count in counts.values()]
             entropy = -sum(p * np.log2(p) for p in probabilities if p > 0)
             max_entropy = np.log2(len(counts))
-            normalized_entropy = entropy / max_entropy
-            cluster_strengths[cluster].ave_strength = normalized_entropy
-
-    # Print average strength of each cluster
-    print("Entropy per Cluster:")
-    for cluster, data in cluster_strengths.items():
-        print(f"Cluster {cluster}: {data}")
+            normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
+        else:
+            normalized_entropy = 0.0
         
-    return cluster_strengths
+        cluster_entropies[cluster] = normalized_entropy
+
+    # Print entropy per cluster
+    print("Entropy per Cluster:")
+    for cluster, entropy in cluster_entropies.items():
+        print(f"Cluster {cluster}: {entropy:.4f}")
+        
+    return cluster_entropies
 
 def calculate_token_entropy(token_list: list):
     total_count = len(token_list)
@@ -505,36 +505,97 @@ def calculate_token_entropy(token_list: list):
     normalized_entropy = entropy / max_entropy
     return normalized_entropy
 
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def load_dataset_from_csv(csv_path='results.csv', limit=None):
+    """
+    Load dataset from CSV file.
+    
+    Args:
+        csv_path: Path to the CSV file
+        limit: Optional limit on number of samples to load
+    
+    Returns:
+        List of ImagePrompt objects
+    """
+    df = pd.read_csv(csv_path)
+    
+    # Convert https to http for COCO images to avoid SSL issues
+    df['image_url'] = df['image_url'].str.replace('https://', 'http://')
+    
+    # Limit the number of samples if specified
+    if limit:
+        df = df.head(limit)
+    
+    imagePrompts = []
+    for _, row in df.iterrows():
+        imagePrompts.append(ImagePrompt(
+            image_url=row['image_url'],
+            prompt=row['question'],
+            prefix=row['prefix']
+        ))
+    
+    return imagePrompts, df
+
+def save_results_to_csv(results_data, output_path='analysis_results.csv'):
+    """
+    Save analysis results to CSV file.
+    
+    Args:
+        results_data: List of dictionaries containing analysis results
+        output_path: Path to save the output CSV
+    """
+    df = pd.DataFrame(results_data)
+    df.to_csv(output_path, index=False)
+    print(f"Results saved to {output_path}")
+
 def main():
     """
-    Main function to demonstrate the usage of LlavaMechanism class.
+    Main function to process images from CSV and analyze attention patterns.
     """
     # Create LlavaMechanism instance
     mechanism = LlavaMechanism()
     
-    # Create image prompts
-    imagePrompts = [
-        ImagePrompt(
-            image_url="http://images.cocodataset.org/val2017/000000219578.jpg",
-            prompt="What is the color of the dog?",
-            prefix="the color of the dog is"
-        ) for _ in range(100)
-    ]
-
+    # Load dataset from CSV
+    print("Loading dataset from CSV...")
+    imagePrompts, original_df = load_dataset_from_csv('results.csv', limit=None)
+    print(f"Loaded {len(imagePrompts)} images")
+    
+    # Storage for all results
+    all_results = []
+    
     print("Processing images...")
     # Process images in batches
     for i in range(0, len(imagePrompts), batch_size):
         chunk = imagePrompts[i:i + batch_size]
-        images = [Image.open(requests.get(ip.image_url, stream=True).raw) for ip in chunk]
-        prompts = [ip.prompt for ip in chunk]
-        prefixes = [ip.prefix for ip in chunk]
+        chunk_df = original_df.iloc[i:i + batch_size]
+        
+        try:
+            images = [Image.open(requests.get(ip.image_url, stream=True).raw) for ip in chunk]
+            prompts = [ip.prompt for ip in chunk]
+            prefixes = [ip.prefix for ip in chunk]
+        except Exception as e:
+            print(f"Error loading images in batch {i//batch_size}: {e}")
+            continue
 
         # Get attention patches
-        batch_results = mechanism.get_attention_patches(images, prompts, prefixes)
+        try:
+            batch_results = mechanism.get_attention_patches(images, prompts, prefixes)
+        except Exception as e:
+            print(f"Error processing batch {i//batch_size}: {e}")
+            continue
         
         # Process each image result
         for j, (ip, (demo_img, increase_scores_normalize, outputs_probs_sort)) in enumerate(zip(chunk, batch_results)):
-            print(f"\nProcess image {i+j} - {ip.image_url}")
+            idx = i + j
+            row = chunk_df.iloc[j]
+            
+            print(f"\n{'='*80}")
+            print(f"Process image {idx} - {row['question_type']}")
+            print(f"Question: {row['question']}")
+            print(f"Ground truth: {row['ground_truth']}")
+            print(f"Image: {ip.image_url}")
+            print(f"{'='*80}")
             
             # Convert attention scores to 2D array
             increase_scores_normalize = np.array(increase_scores_normalize)
@@ -542,31 +603,66 @@ def main():
         
             # Transform to 3D points
             attentions_with_locations = transform_matrix_to_3d_points(increase_scores_normalize)
-            print(f"Attentions with locations: ", attentions_with_locations.shape)
+            print(f"Attentions with locations: {attentions_with_locations.shape}")
             
             # Apply threshold
             threshold_percentile = 80
             filtered_attentions_with_locations = apply_threshold(attentions_with_locations, threshold_percentile)
-            print(f"Attentions without the lowest {threshold_percentile}% datapoints: ", filtered_attentions_with_locations.shape)
+            print(f"Attentions without the lowest {threshold_percentile}% datapoints: {filtered_attentions_with_locations.shape}")
             
             # Duplicate points based on attention strength
             weighted_attentions_with_locations = duplicate_points(filtered_attentions_with_locations, 1, 9)
             
             # Find clusters
             db, n_clusters, n_noise = find_clusters(weighted_attentions_with_locations, 1.3, 15)
-
-            # Apply Euclidean distance to evaluate spatial proximity
-            # epsilon = 1.5 - eps should be >=1 since the minimum distance between 2 adjacent attentions is 1.
-            # min_samples = 15
-            db, _, _ = find_clusters(weighted_attentions_with_locations, 1.3, 15)
-            calculate_metrics(db, weighted_attentions_with_locations)
+            
+            # Calculate metrics
+            cluster_metrics = calculate_metrics(db, weighted_attentions_with_locations)
     
-            # Calculate entropy.
-            entropy = calculate_entropy(increase_scores_normalize)
+            # Calculate entropy
+            attention_entropy = calculate_entropy(increase_scores_normalize)
             token_entropy = calculate_token_entropy(outputs_probs_sort)
-            print(f"Attention Entropy: {entropy:.4f}")
+            print(f"Attention Entropy: {attention_entropy:.4f}")
             print(f"Token Entropy: {token_entropy:.4f}")
-            cluster_entropy(db, weighted_attentions_with_locations)
+            
+            # Calculate cluster entropy
+            cluster_entropies = cluster_entropy(db, weighted_attentions_with_locations)
+            
+            # Store results
+            result_dict = {
+                'image_id': idx,
+                'question_type': row['question_type'],
+                'question': row['question'],
+                'ground_truth': row['ground_truth'],
+                'image_url': ip.image_url,
+                'n_clusters': n_clusters,
+                'n_noise': n_noise,
+                'attention_entropy': attention_entropy,
+                'token_entropy': token_entropy,
+                'cluster_count': len(cluster_metrics),
+            }
+            
+            # Add cluster-specific metrics
+            for cluster_id, metrics in cluster_metrics.items():
+                result_dict[f'cluster_{cluster_id}_n_points'] = metrics.n_points
+                result_dict[f'cluster_{cluster_id}_avg_strength'] = metrics.ave_strength
+            
+            # Add cluster entropies
+            for cluster_id, entropy in cluster_entropies.items():
+                result_dict[f'cluster_{cluster_id}_entropy'] = entropy
+            
+            all_results.append(result_dict)
+            
+            # Save intermediate results every 10 images
+            if (idx + 1) % 10 == 0:
+                save_results_to_csv(all_results, f'analysis_results_partial_{idx+1}.csv')
+    
+    # Save final results
+    save_results_to_csv(all_results, 'analysis_results_final.csv')
+    print("\n" + "="*80)
+    print("Analysis complete!")
+    print(f"Processed {len(all_results)} images")
+    print("="*80)
 
 if __name__ == "__main__":
     main()
