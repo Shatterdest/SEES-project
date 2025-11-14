@@ -548,20 +548,25 @@ def calculate_metrics(db: DBSCAN, weighted_attentions_with_locations):
         
     return cluster_strengths
     
-def calculate_entropy(datapoints: list):
-    flat_list = [item for sublist in datapoints for item in sublist]
-    if not flat_list:
-        return 0.0
-        
-    total_count = len(flat_list)
-    counts = Counter(flat_list)
+def calculate_entropy(probabilities: list):
+    """
+    Calculates the normalized Shannon entropy of a given probability distribution.
     
-    if len(counts) <= 1:
-        return 0.0 # Entropy is 0 if there's 0 or 1 unique value
-        
-    probabilities = [count / total_count for count in counts.values()]
+    Args:
+        probabilities: A list of probability values that sum to 1.0.
+    """
+    
+    # Filter out zero probabilities, as log2(0) is undefined
     entropy = -sum(p * np.log2(p) for p in probabilities if p > 0)
-    max_entropy = np.log2(len(counts))
+    
+    # Normalize the entropy
+    # The maximum entropy occurs with a uniform distribution (N values)
+    N = len(probabilities)
+    
+    if N <= 1:
+        return 0.0  # Entropy of a single point (or no points) is 0
+        
+    max_entropy = np.log2(N)
     
     if max_entropy == 0:
         return 0.0
@@ -751,7 +756,7 @@ def main():
             cluster_metrics = calculate_metrics(db, weighted_attentions_with_locations)
     
             # Calculate entropy
-            attention_entropy = calculate_entropy(increase_scores_normalize)
+            attention_entropy = calculate_entropy(increase_scores_normalize) # <-- PROBLEM IS HERE
             predict_index = outputs_probs_sort[0].item()
             token_confidence = float(torch.log(outputs_probs[predict_index]).item())
             print(f"Attention Entropy: {attention_entropy:.4f}")
