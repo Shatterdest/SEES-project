@@ -345,7 +345,7 @@ class LlavaMechanism:
             
             print(f'Finished getting patches time {time.time() - t}')
     
-            batch_results.append((demo_img, increase_scores_normalize, outputs_probs_sort))
+            batch_results.append((demo_img, increase_scores_normalize, outputs_probs_sort, outputs_probs))
             
         return batch_results
 
@@ -586,7 +586,7 @@ def main():
             continue
         
         # Process each image result
-        for j, (ip, (demo_img, increase_scores_normalize, outputs_probs_sort)) in enumerate(zip(chunk, batch_results)):
+        for j, (ip, (demo_img, increase_scores_normalize, outputs_probs_sort, outputs_probs)) in enumerate(zip(chunk, batch_results)):
             idx = i + j
             row = chunk_df.iloc[j]
             
@@ -621,9 +621,10 @@ def main():
     
             # Calculate entropy
             attention_entropy = calculate_entropy(increase_scores_normalize)
-            token_entropy = calculate_token_entropy(outputs_probs_sort)
+            predict_index = outputs_probs_sort[0].item()
+            token_confidence = float(torch.log(outputs_probs[predict_index]).item())
             print(f"Attention Entropy: {attention_entropy:.4f}")
-            print(f"Token Entropy: {token_entropy:.4f}")
+            print(f"Token Confidence: {token_confidence:.4f}")
             
             # Calculate cluster entropy
             cluster_entropies = cluster_entropy(db, weighted_attentions_with_locations)
@@ -638,7 +639,8 @@ def main():
                 'n_clusters': n_clusters,
                 'n_noise': n_noise,
                 'attention_entropy': attention_entropy,
-                'token_entropy': token_entropy,
+                'token_confidence': token_confidence,  # Log-prob of predicted token
+                'predicted_token': mechanism.processor.decode(predict_index),
                 'cluster_count': len(cluster_metrics),
             }
             
