@@ -733,12 +733,18 @@ def main():
             print(f"Image: {ip.image_url}")
             print(f"{'='*80}")
             
-            # Convert attention scores to 2D array
-            increase_scores_normalize = np.array(increase_scores_normalize)
-            increase_scores_normalize = increase_scores_normalize.reshape(24, 24)
+            scores_normalize_1d_list = increase_scores_normalize
+            
+            # --- 1. Calculate Entropy (CORRECT) ---
+            # Call this FIRST, using the 1D list
+            attention_entropy = calculate_entropy(scores_normalize_1d_list)
+            
+            # --- 2. Prepare for Clustering ---
+            # Now, you can create the 2D array for clustering
+            scores_normalize_2d_array = np.array(scores_normalize_1d_list).reshape(24, 24)
         
             # Transform to 3D points
-            attentions_with_locations = transform_matrix_to_3d_points(increase_scores_normalize)
+            attentions_with_locations = transform_matrix_to_3d_points(scores_normalize_2d_array)
             print(f"Attentions with locations: {attentions_with_locations.shape}")
             
             # Apply threshold
@@ -755,10 +761,12 @@ def main():
             # Calculate metrics
             cluster_metrics = calculate_metrics(db, weighted_attentions_with_locations)
     
-            # Calculate entropy
-            attention_entropy = calculate_entropy(increase_scores_normalize) # <-- PROBLEM IS HERE
+            # --- 3. Report Metrics ---
+            # (Entropy is already calculated)
             predict_index = outputs_probs_sort[0].item()
             token_confidence = float(torch.log(outputs_probs[predict_index]).item())
+            
+            # This will now print the correct, variable entropy
             print(f"Attention Entropy: {attention_entropy:.4f}")
             print(f"Token Confidence: {token_confidence:.4f}")
             
