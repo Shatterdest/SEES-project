@@ -295,7 +295,7 @@ class LlavaMechanism:
     
                     # Store the result
                     all_head_increase.append([f"{test_layer}_{head_i}", float(increase.item())])
-    
+            
             print(f'Finished head-level increase time {time.time() - t}')
             
             # Sort to find the head with maximum increase

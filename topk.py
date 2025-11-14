@@ -395,14 +395,16 @@ class LlavaMechanism:
                     # --- 3. Add to weighted average ---
                     aggregated_scores += (curhead_increase_scores * weight)
                     total_weight += weight
-
+            print(f"DEBUG: Total weight: {total_weight}")
             # --- 4. Finalize weighted average ---
             if total_weight != 0:
                 final_aggregated_scores_raw = aggregated_scores / total_weight
             else:
                 # Fallback in case all weights are 0 (e.g., all scores are 0)
                 final_aggregated_scores_raw = aggregated_scores # which is np.zeros(576)
-            
+            print(f"DEBUG: Aggregated map mean: {final_aggregated_scores_raw.mean()}")
+            print(f"DEBUG: Aggregated map max: {final_aggregated_scores_raw.max()}")
+            print(f"DEBUG: Aggregated map min: {final_aggregated_scores_raw.min()}")
             # Apply the same normalization as the original code
             # The normalize() function expects a list
             increase_scores_normalize = normalize(final_aggregated_scores_raw.tolist())
