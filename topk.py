@@ -339,69 +339,68 @@ class LlavaMechanism:
             aggregated_scores = np.zeros(576) 
             total_weight = 0.0
 
-            # Group heads by layer to avoid redundant computations (V, O-proj, etc.)
-            heads_by_layer = {}
-            for head_info, score in top_k_heads_scores:
-                test_layer_str, head_index_str = head_info.split("_")
-                test_layer = int(test_layer_str)
-                head_index = int(head_index_str)
-                weight = float(score)
-                
-                # Store head info
-                if test_layer not in heads_by_layer:
-                    heads_by_layer[test_layer] = []
-                heads_by_layer[test_layer].append((head_index, weight))
+            # ----------------------------
+            # Replace previous weighted-avg block with this
+            # ----------------------------
 
-            # Now, iterate through each layer that contains one or more top-k heads
-            for test_layer, heads_info in heads_by_layer.items():
-                
-                # --- 1. Layer-specific setup (compute V, O, origin_prob once per layer) ---
-                layer_input = all_pos_layer_input_i[test_layer].to(self.model.dtype).to(self.model.device)
-                att_layer = all_last_attn_subvalues_i[test_layer].to(self.model.dtype).to(self.model.device)
-                seq_len = layer_input.shape[0]
-
-                v_proj_module = self.model.language_model.layers[test_layer].self_attn.v_proj
-                V = v_proj_module(layer_input)
-                V_heads = V.view(seq_len, HEAD_NUM, HEAD_DIM).permute(1, 0, 2)
-                
-                o_proj_module = self.model.language_model.layers[test_layer].self_attn.o_proj
-                o_proj_weight = o_proj_module.weight.data.to(self.model.dtype).to(self.model.device)
-                hidden_size = o_proj_weight.shape[0]
-                o_proj_weight_split = o_proj_weight.view(hidden_size, HEAD_NUM, HEAD_DIM).permute(1, 2, 0)
-                
-                cur_layer_input_last = layer_input[-1]
-                origin_prob = torch.log(get_prob(get_bsvalues(cur_layer_input_last, self.model, final_var))[predict_index])
-
-                # --- 2. Iterate over the top-k heads *within* this layer ---
-                for head_index, weight in heads_info:
-                    
-                    # Get attention output for this specific head
-                    attn_out_this_head = torch.bmm(att_layer[head_index:head_index+1], V_heads[head_index:head_index+1])
-                    
-                    # Project through o_proj for this head
-                    attn_subvalues_this_head = torch.bmm(attn_out_this_head, o_proj_weight_split[head_index:head_index+1])
-                    attn_subvalues_this_head = attn_subvalues_this_head.squeeze(0)
-                    
-                    # Compute per-position increases
-                    cur_attn_subvalues_plus = attn_subvalues_this_head + cur_layer_input_last.unsqueeze(0)
-                    cur_attn_plus_probs = torch.log(get_prob(get_bsvalues(cur_attn_subvalues_plus, self.model, final_var))[:, predict_index])
-                    
-                    cur_attn_plus_probs_increase = cur_attn_plus_probs - origin_prob
-                    head_pos_increase = cur_attn_plus_probs_increase.tolist()
-                    
-                    # Extract image patch contributions (positions 5:581)
-                    curhead_increase_scores = np.array(head_pos_increase[5:581])
-                    
-                    # --- 3. Add to weighted average ---
-                    aggregated_scores += (curhead_increase_scores * weight)
-                    total_weight += weight
-            print(f"DEBUG: Total weight: {total_weight}")
-            # --- 4. Finalize weighted average ---
-            if total_weight != 0:
-                final_aggregated_scores_raw = aggregated_scores / total_weight
+            # top_k_heads_scores is list like [( "L_H", score ), ...] in the same order
+            if len(top_k_heads_scores) == 0:
+                final_aggregated_scores_raw = np.zeros(576)
             else:
-                # Fallback in case all weights are 0 (e.g., all scores are 0)
-                final_aggregated_scores_raw = aggregated_scores # which is np.zeros(576)
+                # Build score array (numpy) for stable softmax
+                scores_arr = np.array([s for (_, s) in top_k_heads_scores], dtype=float)
+
+                # If all scores identical (or K==1), fallback to equal weights
+                if np.allclose(scores_arr, scores_arr[0]):
+                    weights = np.ones_like(scores_arr) / len(scores_arr)
+                else:
+                    # stable softmax: exp(score - max(score))
+                    exps = np.exp(scores_arr - scores_arr.max())
+                    weights = exps / exps.sum()
+
+                # Map each (layer,head) -> normalized weight
+                weight_map = {}
+                for idx, (head_info, _) in enumerate(top_k_heads_scores):
+                    layer_s, head_s = head_info.split("_")
+                    weight_map[(int(layer_s), int(head_s))] = float(weights[idx])
+
+                # Aggregation
+                aggregated_scores = np.zeros(576, dtype=float)
+                for test_layer, heads_info in heads_by_layer.items():
+                    # (same per-layer setup you already have)
+                    layer_input = all_pos_layer_input_i[test_layer].to(self.model.dtype).to(self.model.device)
+                    att_layer = all_last_attn_subvalues_i[test_layer].to(self.model.dtype).to(self.model.device)
+                    seq_len = layer_input.shape[0]
+
+                    v_proj_module = self.model.language_model.layers[test_layer].self_attn.v_proj
+                    V = v_proj_module(layer_input)
+                    V_heads = V.view(seq_len, HEAD_NUM, HEAD_DIM).permute(1, 0, 2)
+
+                    o_proj_module = self.model.language_model.layers[test_layer].self_attn.o_proj
+                    o_proj_weight = o_proj_module.weight.data.to(self.model.dtype).to(self.model.device)
+                    hidden_size = o_proj_weight.shape[0]
+                    o_proj_weight_split = o_proj_weight.view(hidden_size, HEAD_NUM, HEAD_DIM).permute(1, 2, 0)
+
+                    cur_layer_input_last = layer_input[-1]
+                    origin_prob = torch.log(get_prob(get_bsvalues(cur_layer_input_last, self.model, final_var))[predict_index])
+
+                    for head_index, _rawweight in heads_info:
+                        # compute head map exactly as you already do
+                        attn_out_this_head = torch.bmm(att_layer[head_index:head_index+1], V_heads[head_index:head_index+1])
+                        attn_subvalues_this_head = torch.bmm(attn_out_this_head, o_proj_weight_split[head_index:head_index+1])
+                        attn_subvalues_this_head = attn_subvalues_this_head.squeeze(0)
+                        cur_attn_subvalues_plus = attn_subvalues_this_head + cur_layer_input_last.unsqueeze(0)
+                        cur_attn_plus_probs = torch.log(get_prob(get_bsvalues(cur_attn_subvalues_plus, self.model, final_var))[:, predict_index])
+                        cur_attn_plus_probs_increase = cur_attn_plus_probs - origin_prob
+                        head_pos_increase = cur_attn_plus_probs_increase.tolist()
+                        curhead_increase_scores = np.array(head_pos_increase[5:581])
+
+                        # use normalized weight from weight_map
+                        w = weight_map.get((test_layer, head_index), 0.0)
+                        aggregated_scores += curhead_increase_scores * w
+
+                final_aggregated_scores_raw = aggregated_scores  # already weighted and normalized sum to 1
+
             print(f"DEBUG: Aggregated map mean: {final_aggregated_scores_raw.mean()}")
             print(f"DEBUG: Aggregated map max: {final_aggregated_scores_raw.max()}")
             print(f"DEBUG: Aggregated map min: {final_aggregated_scores_raw.min()}")
