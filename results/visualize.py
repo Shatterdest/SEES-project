@@ -17,15 +17,15 @@ print(f"Attention Entropy - Mean: {df['attention_entropy'].mean():.4f}")
 print(f"Attention Entropy - Std:  {df['attention_entropy'].std():.4f}")
 print(f"Attention Entropy - Min:  {df['attention_entropy'].min():.4f}")
 print(f"Attention Entropy - Max:  {df['attention_entropy'].max():.4f}")
-print(f"\nToken Entropy - Mean: {df['token_entropy'].mean():.4f}")
-print(f"Token Entropy - Std:  {df['token_entropy'].std():.4f}")
+print(f"\nToken Confidence - Mean: {df['token_confidence'].mean():.4f}")
+print(f"Token Confidence - Std:  {df['token_confidence'].std():.4f}")
 
 # Check if entropy is essentially constant
 if df['attention_entropy'].std() < 0.01:
     print("\n⚠️  WARNING: Attention entropy shows almost no variation!")
     print("   This suggests attention is uniformly dispersed across all images.")
     
-if df['token_entropy'].std() < 0.01:
+if df['token_confidence'].std() < 0.01:
     print("\n⚠️  WARNING: Token entropy is constant!")
     print("   This suggests the model has maximum uncertainty about predictions.")
 
@@ -145,5 +145,5 @@ axes[1, 1].set_title('Average Noise Ratio by Question Type')
 axes[1, 1].set_xlabel('Noise Ratio')
 
 plt.tight_layout()
-plt.savefig('diagnostic_analysis.png', dpi=150, bbox_inches='tight')
+plt.savefig('diagnostic_analysis_topk.png', dpi=150, bbox_inches='tight')
 print("\n📊 Visualization saved as 'diagnostic_analysis.png'")

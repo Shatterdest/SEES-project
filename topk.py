@@ -804,7 +804,7 @@ def main():
                 save_results_to_csv(all_results, f'analysis_results_partial_{idx+1}.csv')
     
     # Save final results
-    save_results_to_csv(all_results, 'analysis_results_final.csv')
+    save_results_to_csv(all_results, 'analysis_results_final_topk.csv')
     print("\n" + "="*80)
     print("Analysis complete!")
     print(f"Processed {len(all_results)} images")
