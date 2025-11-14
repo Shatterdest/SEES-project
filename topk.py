@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# topk.py (corrected)
+
 import torch
 import copy, math, pickle, json, os
 import bertviz, uuid
@@ -52,23 +55,24 @@ class Entropy:
     average_strength: float
     
 def normalize(vector):
+    # Accept numpy arrays or lists
+    if isinstance(vector, np.ndarray):
+        vector = vector.tolist()
     # Handle case where all values are the same (e.g., all zeros)
     max_value = max(vector)
     min_value = min(vector)
     
     if max_value == min_value:
         # If all values are identical, return a uniform distribution
-        # (or you could return the vector as-is if it's all zeros)
         if sum(vector) == 0:
             return vector
-        else: # Avoid division by zero if all values are same but non-zero
-             return [1.0/len(vector)] * len(vector)
+        else:
+            return [1.0/len(vector)] * len(vector)
 
     vector1 = [(x-min_value)/(max_value-min_value) for x in vector]
     
     sum_vector1 = sum(vector1)
     if sum_vector1 == 0:
-        # This can happen if min-max normalization results in all zeros
         return [0.0] * len(vector1)
         
     vector2 = [x/sum_vector1 for x in vector1]
@@ -98,8 +102,6 @@ def transfer_output(outputs, batch_size):
         if att_tensor is not None:
             batch_subvalues = [att_tensor[b].detach().cpu() for b in range(batch_size)]
         else:
-            # placeholder: zeros with expected shape (num_heads, seq_len, seq_len)
-            # or use None and handle later
             batch_subvalues = [torch.zeros(HEAD_NUM, layer_tensor.shape[1], layer_tensor.shape[1]) for _ in range(batch_size)]
 
         all_pos_layer_input.append(batch_inputs)
@@ -171,15 +173,9 @@ class LlavaMechanism:
     def __init__(self, model_id="llava-hf/llava-1.5-7b-hf", device="cuda"):
         """
         Initialize the LlavaMechanism class by loading the model and processor.
-        
-        Args:
-            model_id (str): The model ID to load
-            device (str): Device to run the model on
         """
-        # Setup CUDA
         torch.set_default_device('cuda')
         
-        # Load model
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
         )
@@ -196,17 +192,12 @@ class LlavaMechanism:
         print(f"Model loaded on {self.model.device}")
         self.model.eval()
         
-        # Create output directory for saved visualizations
         self.output_dir = "output_images"
         os.makedirs(self.output_dir, exist_ok=True)
 
     def get_attention_patches(self, images, prompts, prefixes, K=5):
         """
-        MODIFIED: This function now analyzes the top-K heads and returns a weighted
-        average of their attention patterns.
-        
-        Args:
-            K (int): The number of top heads to analyze and aggregate.
+        Analyze top-K heads and return an aggregated attention map (normalized).
         """
         batch_results = []
         batch_size = len(images)
@@ -232,7 +223,10 @@ class LlavaMechanism:
             all_pos_layer_output_i = [layer[i] for layer in transfer_outputs[1]] 
             all_last_attn_subvalues_i = [layer[i] for layer in transfer_outputs[2]]
             
+            # logits fix: handle shape [seq_len, 1, vocab] or [seq_len, vocab]
             logits_i = outputs["logits"][i]
+            if logits_i.ndim == 3:
+                logits_i = logits_i[:, 0, :]
             outputs_probs = get_prob(logits_i[-1])
             outputs_probs_sort = torch.argsort(outputs_probs, descending=True)
             print([self.processor.decode(x) for x in outputs_probs_sort[:10]])
@@ -241,7 +235,6 @@ class LlavaMechanism:
             last_layer_batch = all_pos_layer_output_i[-1]
             last_elem = last_layer_batch if isinstance(last_layer_batch, torch.Tensor) else torch.as_tensor(last_layer_batch)
     
-            # Ensure we can index the last token
             if last_elem.dim() == 0:
                 vec = last_elem.unsqueeze(0)
             elif last_elem.dim() == 1:
@@ -252,7 +245,7 @@ class LlavaMechanism:
 
             final_var = vec.pow(2).mean(-1, keepdim=True)
             
-            # Process image
+            # Process image for visualization / patch sizes
             image_i = images[i]
             image_convert = convert_to_rgb(image_i)
             image_numpy = to_numpy_array(image_convert)
@@ -268,12 +261,11 @@ class LlavaMechanism:
             # Compute head-level increases
             all_head_increase = []
             for test_layer in range(min(LAYER_NUM, len(all_pos_layer_input_i))):
-                # Get the layer input for this sample
                 layer_input = all_pos_layer_input_i[test_layer]
                 layer_output = all_pos_layer_output_i[test_layer]
                 att_layer = all_last_attn_subvalues_i[test_layer]
                 
-                # Move to model device and dtype
+                # Move to model device/dtype
                 layer_input = layer_input.to(self.model.dtype).to(self.model.device)
                 layer_output = layer_output.to(self.model.dtype).to(self.model.device)
                 att_layer = att_layer.to(self.model.dtype).to(self.model.device)
@@ -308,19 +300,15 @@ class LlavaMechanism:
     
                 # 7) Loop through all heads
                 for head_i in range(HEAD_NUM):
-                    # Get the contribution of only this head for the last token
                     head_contribution_last_token = attn_subvalues_per_head[head_i, -1, :]
                     
-                    # Compute contribution if we add only this head's output
                     added = head_contribution_last_token + cur_layer_input_last
                     added_probs = torch.log(get_prob(get_bsvalues(added, self.model, final_var))[predict_index])
                     increase = added_probs - origin_prob
     
-                    # Store the result
                     all_head_increase.append([f"{test_layer}_{head_i}", float(increase.item())])
     
             print(f'Finished head-level increase time {time.time() - t}')
-            
             
             # ==================================================================
             # START: MODIFIED TOP-K LOGIC
@@ -329,45 +317,53 @@ class LlavaMechanism:
             # Sort to find the top K heads with maximum increase
             all_head_increase_sort = sorted(all_head_increase, key=lambda x: x[-1])[::-1]
             top_k_heads_scores = all_head_increase_sort[:K]
-            
+            heads_by_layer = {}
+            for head_info, _ in top_k_heads_scores:
+                layer_s, head_s = head_info.split("_")
+                layer_i = int(layer_s)
+                head_i = int(head_s)
+                if layer_i not in heads_by_layer:
+                    heads_by_layer[layer_i] = []
+                heads_by_layer[layer_i].append((head_i, _))  # store head index and score
             print(f"Top {K} heads (Layer_Head, LogIncrease):")
             for h_info, h_score in top_k_heads_scores:
                 print(f"  {h_info}, {h_score:.4f}")
 
-            # Initialize accumulators for weighted average
-            # 576 is the number of image patches (24*24)
-            aggregated_scores = np.zeros(576) 
-            total_weight = 0.0
-
-            # ----------------------------
-            # Replace previous weighted-avg block with this
-            # ----------------------------
-
-            # top_k_heads_scores is list like [( "L_H", score ), ...] in the same order
+            # -------------------------
+            # Build heads_by_layer map
+            # -------------------------
+            heads_by_layer = {}
+            for head_info, score in top_k_heads_scores:
+                layer_s, head_s = head_info.split("_")
+                layer_i = int(layer_s)
+                head_i = int(head_s)
+                if layer_i not in heads_by_layer:
+                    heads_by_layer[layer_i] = []
+                heads_by_layer[layer_i].append((head_i, float(score)))
+            # debug:
+            # print("heads_by_layer:", {k: [h for h,_ in v] for k,v in heads_by_layer.items()})
+            
+            # top_k_heads_scores -> build scores array and compute normalized positive weights via stable softmax
             if len(top_k_heads_scores) == 0:
-                final_aggregated_scores_raw = np.zeros(576)
+                final_aggregated_scores_raw = np.zeros(576, dtype=float)
             else:
-                # Build score array (numpy) for stable softmax
                 scores_arr = np.array([s for (_, s) in top_k_heads_scores], dtype=float)
-
-                # If all scores identical (or K==1), fallback to equal weights
-                if np.allclose(scores_arr, scores_arr[0]):
+                if len(scores_arr) == 1 or np.allclose(scores_arr, scores_arr[0]):
                     weights = np.ones_like(scores_arr) / len(scores_arr)
                 else:
-                    # stable softmax: exp(score - max(score))
                     exps = np.exp(scores_arr - scores_arr.max())
                     weights = exps / exps.sum()
 
-                # Map each (layer,head) -> normalized weight
+                # assign weights to (layer,head)
                 weight_map = {}
                 for idx, (head_info, _) in enumerate(top_k_heads_scores):
                     layer_s, head_s = head_info.split("_")
                     weight_map[(int(layer_s), int(head_s))] = float(weights[idx])
 
-                # Aggregation
+                # Aggregate maps using normalized positive weights
                 aggregated_scores = np.zeros(576, dtype=float)
+
                 for test_layer, heads_info in heads_by_layer.items():
-                    # (same per-layer setup you already have)
                     layer_input = all_pos_layer_input_i[test_layer].to(self.model.dtype).to(self.model.device)
                     att_layer = all_last_attn_subvalues_i[test_layer].to(self.model.dtype).to(self.model.device)
                     seq_len = layer_input.shape[0]
@@ -384,28 +380,28 @@ class LlavaMechanism:
                     cur_layer_input_last = layer_input[-1]
                     origin_prob = torch.log(get_prob(get_bsvalues(cur_layer_input_last, self.model, final_var))[predict_index])
 
-                    for head_index, _rawweight in heads_info:
-                        # compute head map exactly as you already do
+                    for head_index, _rawscore in heads_info:
                         attn_out_this_head = torch.bmm(att_layer[head_index:head_index+1], V_heads[head_index:head_index+1])
                         attn_subvalues_this_head = torch.bmm(attn_out_this_head, o_proj_weight_split[head_index:head_index+1])
                         attn_subvalues_this_head = attn_subvalues_this_head.squeeze(0)
+
                         cur_attn_subvalues_plus = attn_subvalues_this_head + cur_layer_input_last.unsqueeze(0)
                         cur_attn_plus_probs = torch.log(get_prob(get_bsvalues(cur_attn_subvalues_plus, self.model, final_var))[:, predict_index])
                         cur_attn_plus_probs_increase = cur_attn_plus_probs - origin_prob
                         head_pos_increase = cur_attn_plus_probs_increase.tolist()
-                        curhead_increase_scores = np.array(head_pos_increase[5:581])
+                        curhead_increase_scores = np.array(head_pos_increase[5:581], dtype=float)
 
-                        # use normalized weight from weight_map
                         w = weight_map.get((test_layer, head_index), 0.0)
                         aggregated_scores += curhead_increase_scores * w
 
-                final_aggregated_scores_raw = aggregated_scores  # already weighted and normalized sum to 1
+                final_aggregated_scores_raw = aggregated_scores
 
-            print(f"DEBUG: Aggregated map mean: {final_aggregated_scores_raw.mean()}")
-            print(f"DEBUG: Aggregated map max: {final_aggregated_scores_raw.max()}")
-            print(f"DEBUG: Aggregated map min: {final_aggregated_scores_raw.min()}")
-            # Apply the same normalization as the original code
-            # The normalize() function expects a list
+            # Debug prints
+            print(f"DEBUG: Aggregated map mean: {final_aggregated_scores_raw.mean():.6f}")
+            print(f"DEBUG: Aggregated map max: {final_aggregated_scores_raw.max():.6f}")
+            print(f"DEBUG: Aggregated map min: {final_aggregated_scores_raw.min():.6f}")
+
+            # Normalize final aggregated map into a probability-like vector
             increase_scores_normalize = normalize(final_aggregated_scores_raw.tolist())
             
             # ==================================================================
@@ -419,30 +415,7 @@ class LlavaMechanism:
         return batch_results
 
     # def save_vis(self, demo_img, increase_scores_normalize, output_path=None):
-    #     if output_path is None:
-    #         output_path = os.path.join(self.output_dir, "attention_analysis.png")
-    #     demo_img_h, demo_img_w, demo_img_c = demo_img.shape
-        
-    #     demo_img_inc = np.array(increase_scores_normalize).reshape((24, 24))
-    #     demo_img_inc = cv2.resize(demo_img_inc,
-    #                             dsize=(demo_img_w, demo_img_h),
-    #                             interpolation=cv2.INTER_CUBIC)
-        
-    #     plt.figure(figsize=(25, 6))
-    #     plt.subplot(1, 3, 1)
-    #     plt.imshow(demo_img)
-    #     plt.axis("off")
-    #     plt.title("image")
-        
-    #     plt.subplot(1, 3, 2)
-    #     plt.imshow(demo_img)
-    #     plt.imshow(demo_img_inc, alpha=0.8, cmap="gray")
-    #     plt.axis("off")
-    #     plt.title("log increase")
-        
-    #     plt.savefig(output_path)
-    #     plt.close()
-    #     print(f"Visualization saved to {output_path}")
+    #     ...
 
 def transform_matrix_to_3d_points(array_2d: np.ndarray):
     rows, cols = array_2d.shape    
@@ -471,13 +444,14 @@ def find_clusters(attentions_with_locations: np.ndarray, eps: float, min_samples
     return db, n_clusters_, n_noise_
 
 def apply_threshold(datapoints: np.ndarray, percentile: float) -> np.ndarray:
+    if len(datapoints) == 0:
+        return datapoints
     z_values = datapoints[:, 2]
     p_value = np.percentile(z_values, percentile)
     print(f"{percentile}th percentile value: {p_value}")
     
-    # Handle case where all z_values are the same
     if len(np.unique(z_values)) == 1:
-        return datapoints # Return all points if they are identical
+        return datapoints
         
     return datapoints[datapoints[:, 2] > p_value]
 
@@ -487,9 +461,7 @@ def duplicate_points(datapoints: np.ndarray, min_dup: int, max_dup: int) -> np.n
         
     values = datapoints[:, 2]
     
-    # Handle case where all values are the same (max == min)
     if values.max() == values.min():
-        # If all values are same, just use min_dup for all
         scaled = np.full(len(values), min_dup + 1, dtype=int)
     else:
         scaled = ((values - values.min()) / (values.max() - values.min()) * (max_dup - min_dup) + min_dup + 1).astype(int)
@@ -497,14 +469,6 @@ def duplicate_points(datapoints: np.ndarray, min_dup: int, max_dup: int) -> np.n
     weighted_points = np.concatenate([np.repeat([pt], rep, axis=0) for pt, rep in zip(datapoints, scaled)], axis=0)
     print(f"Original points: {len(datapoints)} -> After weighting: {len(weighted_points)}")
     return weighted_points
-
-# def save_attentions(weighted_attentions_with_locations: np.ndarray, db: DBSCAN, image_url: str):
-#     parsed_url = urllib.parse.urlparse(image_url)
-#     filename = os.path.basename(parsed_url.path)
-#     plt.scatter(weighted_attentions_with_locations[:, 0], weighted_attentions_with_locations[:, 1], c=db.labels_)
-#     plt.show()
-#     plt.savefig(os.path.join("output_images", "attention_analysis_" + filename))
-#     plt.close()
 
 from dataclasses import dataclass
 
@@ -519,18 +483,16 @@ def calculate_metrics(db: DBSCAN, weighted_attentions_with_locations):
 
     cluster_strengths = {}
     
-    # Count the number of points per cluster
     cluster_counts = Counter(labels)
     
     if len(weighted_attentions_with_locations) == 0:
         print("Warning: No data points to calculate metrics from.")
         return cluster_strengths
         
-    # Get z values (attention strengths)
     z_values = weighted_attentions_with_locations[:, 2]
 
     for cluster in unique_clusters:
-        cluster_points = z_values[labels == cluster]  # Get strength values for the cluster
+        cluster_points = z_values[labels == cluster]
         count = cluster_counts[cluster] if cluster in cluster_counts else 0
         
         if len(cluster_points) > 0:
@@ -540,7 +502,6 @@ def calculate_metrics(db: DBSCAN, weighted_attentions_with_locations):
         
         cluster_strengths[cluster] = ClusterData(count, avg_strength)
 
-    # Print average strength and number of points per cluster
     print("Average Strength and Number of Points per Cluster:")
     for cluster, data in cluster_strengths.items():
         print(f"Cluster {cluster}: {data}")
@@ -548,34 +509,19 @@ def calculate_metrics(db: DBSCAN, weighted_attentions_with_locations):
     return cluster_strengths
     
 def calculate_entropy(probabilities: list):
-    """
-    Calculates the normalized Shannon entropy of a given probability distribution.
-    
-    Args:
-        probabilities: A list of probability values that sum to 1.0.
-    """
-    
-    # Filter out zero probabilities, as log2(0) is undefined
     entropy = -sum(p * np.log2(p) for p in probabilities if p > 0)
-    
-    # Normalize the entropy
-    # The maximum entropy occurs with a uniform distribution (N values)
     N = len(probabilities)
-    
     if N <= 1:
-        return 0.0  # Entropy of a single point (or no points) is 0
-        
+        return 0.0
     max_entropy = np.log2(N)
-    
     if max_entropy == 0:
         return 0.0
-        
     normalized_entropy = entropy / max_entropy
     return normalized_entropy
 
 def cluster_entropy(db: DBSCAN, weighted_attentions_with_locations):
     labels = db.labels_
-    unique_clusters = set(labels) - {-1}  # Remove noise (-1)
+    unique_clusters = set(labels) - {-1}
 
     cluster_entropies = {}
     
@@ -586,9 +532,7 @@ def cluster_entropy(db: DBSCAN, weighted_attentions_with_locations):
     z_values = weighted_attentions_with_locations[:, 2]
 
     for cluster in unique_clusters:
-        cluster_points = z_values[labels == cluster]  # Get strength values for the cluster
-        
-        # Calculate entropy for this cluster
+        cluster_points = z_values[labels == cluster]
         total_count = len(cluster_points)
         if total_count > 1:
             counts = Counter(cluster_points)
@@ -600,11 +544,9 @@ def cluster_entropy(db: DBSCAN, weighted_attentions_with_locations):
                 max_entropy = np.log2(len(counts))
                 normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0.0
         else:
-            normalized_entropy = 0.0 # 0 or 1 point has 0 entropy
-        
+            normalized_entropy = 0.0
         cluster_entropies[cluster] = normalized_entropy
 
-    # Print entropy per cluster
     print("Entropy per Cluster:")
     for cluster, entropy in cluster_entropies.items():
         print(f"Cluster {cluster}: {entropy:.4f}")
@@ -634,25 +576,10 @@ def calculate_token_entropy(token_list: list):
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def load_dataset_from_csv(csv_path='results.csv', limit=None):
-    """
-    Load dataset from CSV file.
-    
-    Args:
-        csv_path: Path to the CSV file
-        limit: Optional limit on number of samples to load
-    
-    Returns:
-        List of ImagePrompt objects
-    """
     df = pd.read_csv(csv_path)
-    
-    # Convert https to http for COCO images to avoid SSL issues
     df['image_url'] = df['image_url'].str.replace('https://', 'http://')
-    
-    # Limit the number of samples if specified
     if limit:
         df = df.head(limit)
-    
     imagePrompts = []
     for _, row in df.iterrows():
         imagePrompts.append(ImagePrompt(
@@ -660,47 +587,24 @@ def load_dataset_from_csv(csv_path='results.csv', limit=None):
             prompt=row['question'],
             prefix=row['prefix']
         ))
-    
     return imagePrompts, df
 
 def save_results_to_csv(results_data, output_path='analysis_results.csv'):
-    """
-    Save analysis results to CSV file.
-    
-    Args:
-        results_data: List of dictionaries containing analysis results
-        output_path: Path to save the output CSV
-    """
     df = pd.DataFrame(results_data)
     df.to_csv(output_path, index=False)
     print(f"Results saved to {output_path}")
 
 def main():
-    """
-    Main function to process images from CSV and analyze attention patterns.
-    """
-    # Create LlavaMechanism instance
     mechanism = LlavaMechanism()
-    
-    # Load dataset from CSV
     print("Loading dataset from CSV...")
     imagePrompts, original_df = load_dataset_from_csv('results.csv', limit=None)
     print(f"Loaded {len(imagePrompts)} images")
-    
-    # Storage for all results
     all_results = []
-    
-    # ========================================================
-    # Set the number of top-K heads to analyze
     TOP_K_HEADS = 5 
-    # ========================================================
-    
     print(f"Processing images using Top-{TOP_K_HEADS} head aggregation...")
-    # Process images in batches
     for i in range(0, len(imagePrompts), batch_size):
         chunk = imagePrompts[i:i + batch_size]
         chunk_df = original_df.iloc[i:i + batch_size]
-        
         try:
             images = [Image.open(requests.get(ip.image_url, stream=True, verify=False).raw) for ip in chunk]
             prompts = [ip.prompt for ip in chunk]
@@ -709,22 +613,15 @@ def main():
             print(f"Error loading images in batch {i//batch_size}: {e}")
             continue
 
-        # Get attention patches
         try:
-            # Pass TOP_K_HEADS to the processing function
             batch_results = mechanism.get_attention_patches(images, prompts, prefixes, K=TOP_K_HEADS)
         except Exception as e:
             print(f"Error processing batch {i//batch_size}: {e}")
-            # Optional: uncomment to debug
-            # import traceback
-            # traceback.print_exc()
             continue
         
-        # Process each image result
         for j, (ip, (demo_img, increase_scores_normalize, outputs_probs_sort, outputs_probs)) in enumerate(zip(chunk, batch_results)):
             idx = i + j
             row = chunk_df.iloc[j]
-            
             print(f"\n{'='*80}")
             print(f"Process image {idx} - {row['question_type']}")
             print(f"Question: {row['question']}")
@@ -733,46 +630,21 @@ def main():
             print(f"{'='*80}")
             
             scores_normalize_1d_list = increase_scores_normalize
-            
-            # --- 1. Calculate Entropy (CORRECT) ---
-            # Call this FIRST, using the 1D list
             attention_entropy = calculate_entropy(scores_normalize_1d_list)
-            
-            # --- 2. Prepare for Clustering ---
-            # Now, you can create the 2D array for clustering
             scores_normalize_2d_array = np.array(scores_normalize_1d_list).reshape(24, 24)
-        
-            # Transform to 3D points
             attentions_with_locations = transform_matrix_to_3d_points(scores_normalize_2d_array)
             print(f"Attentions with locations: {attentions_with_locations.shape}")
-            
-            # Apply threshold
             threshold_percentile = 80
             filtered_attentions_with_locations = apply_threshold(attentions_with_locations, threshold_percentile)
             print(f"Attentions without the lowest {threshold_percentile}% datapoints: {filtered_attentions_with_locations.shape}")
-            
-            # Duplicate points based on attention strength
             weighted_attentions_with_locations = duplicate_points(filtered_attentions_with_locations, 1, 9)
-            
-            # Find clusters
             db, n_clusters, n_noise = find_clusters(weighted_attentions_with_locations, 1.3, 15)
-            
-            # Calculate metrics
             cluster_metrics = calculate_metrics(db, weighted_attentions_with_locations)
-    
-            # --- 3. Report Metrics ---
-            # (Entropy is already calculated)
             predict_index = outputs_probs_sort[0].item()
             token_confidence = float(torch.log(outputs_probs[predict_index]).item())
-            
-            # This will now print the correct, variable entropy
             print(f"Attention Entropy: {attention_entropy:.4f}")
             print(f"Token Confidence: {token_confidence:.4f}")
-            
-            # Calculate cluster entropy
             cluster_entropies = cluster_entropy(db, weighted_attentions_with_locations)
-            
-            # Store results
             result_dict = {
                 'image_id': idx,
                 'question_type': row['question_type'],
@@ -782,27 +654,19 @@ def main():
                 'n_clusters': n_clusters,
                 'n_noise': n_noise,
                 'attention_entropy': attention_entropy,
-                'token_confidence': token_confidence,  # Log-prob of predicted token
+                'token_confidence': token_confidence,
                 'predicted_token': mechanism.processor.decode(predict_index),
                 'cluster_count': len(cluster_metrics),
             }
-            
-            # Add cluster-specific metrics
             for cluster_id, metrics in cluster_metrics.items():
                 result_dict[f'cluster_{cluster_id}_n_points'] = metrics.n_points
                 result_dict[f'cluster_{cluster_id}_avg_strength'] = metrics.ave_strength
-            
-            # Add cluster entropies
             for cluster_id, entropy in cluster_entropies.items():
                 result_dict[f'cluster_{cluster_id}_entropy'] = entropy
-            
             all_results.append(result_dict)
-            
-            # Save intermediate results every 10 images
             if (idx + 1) % 10 == 0:
                 save_results_to_csv(all_results, f'analysis_results_partial_{idx+1}.csv')
     
-    # Save final results
     save_results_to_csv(all_results, 'analysis_results_final_topk.csv')
     print("\n" + "="*80)
     print("Analysis complete!")
